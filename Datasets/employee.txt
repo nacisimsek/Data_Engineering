@@ -1,0 +1,5 @@
+name|work_place|gender_age|skills_score
+Michael|Montreal,Toronto|Male,30|DB:80,Network:88
+Will|Montreal|Male,35|Perl:85,Scala:82
+Shelley|New York|Female,27|Python:80,Spark:95
+Lucy|Vancouver|Female,57|Sales:89,HR:94
