@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: Ankara06
       POSTGRES_DB: metastore
     volumes:
-      - postgresql_data:/var/lib/postgresql/data
+      - ./postgresql_data:/var/lib/postgresql/data
     networks:
       - cluster
 
@@ -34,7 +34,7 @@ services:
       - "8040:8042"
       - "10000:10000"
     volumes:
-        - namenode:/usr/local/hadoop/namenode
+      - ./namenode:/usr/local/hadoop/namenode
     entrypoint: /bin/bash -c "service ssh start; /usr/local/hadoop/start-master.sh && bash"
 
   cluster-slave-1:
@@ -52,7 +52,7 @@ services:
     networks:
       - cluster
     volumes:
-        - datanode1:/usr/local/hadoop/hdfs/datanode
+      - ./datanode1:/usr/local/hadoop/hdfs/datanode
     entrypoint: /bin/bash -c "service ssh start && sleep 30 && /usr/local/hadoop/start-slave.sh && bash"
 
   cluster-slave-2:
@@ -70,15 +70,10 @@ services:
     networks:
       - cluster
     volumes:
-        - datanode2:/usr/local/hadoop/hdfs/datanode
+      - ./datanode2:/usr/local/hadoop/hdfs/datanode
     entrypoint: /bin/bash -c "service ssh start && sleep 30 && /usr/local/hadoop/start-slave.sh && bash"
 
 networks:
   cluster:
     name: cluster
     driver: bridge
-volumes:
-  postgresql_data:
-  namenode:
-  datanode1:
-  datanode2:
