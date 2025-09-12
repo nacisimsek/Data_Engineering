@@ -1,0 +1,120 @@
+version: '2'
+services:
+  jobmanager:
+    build: ./flink
+    hostname: jobmanager
+    container_name: jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    volumes:
+      - .:/data/
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        rest.flamegraph.enabled: true
+  taskmanager:
+    build: ./flink
+    hostname: taskmanager
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    deploy:
+      replicas: 2
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 4
+  broker:
+    image: confluentinc/cp-kafka:latest
+    hostname: broker
+    container_name: kafka
+    ports:
+     - "9092:9092"
+     - "9093:9093"
+     - "9101:9101"
+    environment:
+      # Basic Kafka Config
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@broker:29093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+      CLUSTER_ID: 'IoTDevicePipeline2024XYZ'
+      KAFKA_ADVERTISED_LISTENERS: 'EXTERNAL://localhost:9092,SASL_PLAINTEXT://localhost:9093,INTERNAL://broker:9092'
+      KAFKA_LISTENERS: 'INTERNAL://broker:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://broker:29093,SASL_PLAINTEXT://0.0.0.0:9093'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      # SASL Config
+      KAFKA_SASL_ENABLED_MECHANISMS: 'PLAIN'
+      KAFKA_LISTENER_NAME_SASL_PLAINTEXT_SASL_ENABLED_MECHANISMS: 'PLAIN'
+      KAFKA_LISTENER_NAME_SASL_PLAINTEXT_PLAIN_SASL_JAAS_CONFIG: 'org.apache.kafka.common.security.plain.PlainLoginModule required user_iot_user="iot_secure_2024";'
+      # Re-added KAFKA_OPTS to specify the JAAS configuration file
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
+    volumes:
+      - ./secrets:/etc/kafka/secrets
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=iot-minio-2024
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/data", "--console-address", ":9001"]
+
+  hive-metastore:
+    container_name: hms
+    build: ./hms-standalone-s3
+    ports:
+      - "9083:9083"
+    environment:
+      - HMS_LOGLEVEL=INFO
+  pyiceberg:
+    image: python:3.12-bookworm
+    container_name: pyiceberg
+    environment:
+      PYICEBERG_CATALOG__DEFAULT__URI: thrift://hms:9083
+      PYICEBERG_CATALOG__DEFAULT__S3__ACCESS_KEY_ID: admin
+      PYICEBERG_CATALOG__DEFAULT__S3__SECRET_ACCESS_KEY: iot-minio-2024
+      PYICEBERG_CATALOG__DEFAULT__S3__PATH_STYLE_ACCESS: true
+      PYICEBERG_CATALOG__DEFAULT__S3__ENDPOINT: http://minio:9000
+    entrypoint: >
+      /bin/sh -c "
+      pip install pyiceberg["s3fs,hive,pyarrow"];
+      sleep infinity
+      "
+  trino:
+    image: 'trinodb/trino:latest'
+    hostname: trino
+    container_name: trino
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./trino/etc:/etc/trino
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: "iot-dashboard-secret-2024"
+      SUPERSET_FEATURE_FLAGS: '{"ENABLE_TEMPLATE_PROCESSING": true}'
+    command: >
+      /bin/sh -c "
+      superset db upgrade &&
+      superset init &&
+      superset run -p 8088 -h 0.0.0.0 --with-threads --reload --debugger
+      "
+networks:
+  default:
+     name: iot-pipeline-network
